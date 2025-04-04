@@ -1,6 +1,6 @@
 # Terraform Grafana Project
 
-This repository contains Terraform infrastructure as code for managing Grafana resources in AWS. The project implements CI/CD pipelines using GitHub Actions with OIDC authentication for secure AWS access.
+This repository contains Terraform infrastructure as code for managing Grafana resources in the cloud with an AWS s3 backend. The project implements CI/CD pipelines using GitHub Actions with OIDC authentication for secure AWS access.
 
 ## Features
 
