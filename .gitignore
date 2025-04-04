@@ -1,0 +1,3 @@
+environments/prod/auth.auto.tfvars
+environments/prod/import.sh
+environments/prod/.terraform/providers/registry.terraform.io/grafana/grafana/3.22.2/darwin_arm64/terraform-provider-grafana_v3.22.2

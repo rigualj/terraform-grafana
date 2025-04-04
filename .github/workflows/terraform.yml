@@ -1,0 +1,122 @@
+name: Terraform Plan
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ "main" ] # Trigger on pushes to the main branch
+
+permissions:
+  id-token: write  # Required for requesting the OIDC JWT token
+  contents: read   # Required for actions/checkout to read repo content
+
+jobs:
+  terraform-plan:
+    name: Terraform Plan
+    runs-on: ubuntu-latest
+    container:
+      image: rigualj/devops-image-slim:latest
+    defaults:
+      run:
+        working-directory: environments/prod
+    env:
+      TF_VAR_grafana_url: "https://rigualj.grafana.net"
+      TF_VAR_grafana_auth_token: ${{ secrets.GRAFANA_AUTH_TOKEN }}
+    outputs:
+      has_changes: ${{ steps.check-plan.outputs.has_changes }}
+    
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4 # Use latest version
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }} # Role ARN with OIDC trust policy and IAM permissions to assume
+          role-session-name: GitHubActionsTerraformPlan
+          aws-region: us-east-1
+
+      - name: Terraform Init
+        run: terraform init
+      
+      - name: Terraform Format Check
+        id: format
+        run: terraform fmt -check
+      
+      - name: Terraform Validate
+        id: validate
+        run: terraform validate
+
+      - name: Terraform Plan
+        id: plan
+        if: steps.validate.outcome == 'success' && steps.format.outcome == 'success'
+        run: |
+          terraform plan -detailed-exitcode -out=terraform-plan-prod || echo "exitcode=$?" >> $GITHUB_OUTPUT
+          echo "Terraform plan completed with exit code $?" # Log the exit code for debugging
+        continue-on-error: true
+        
+      - name: Upload Terraform Plan
+        id: upload-plan
+        if: steps.plan.outcome == 'success' || steps.plan.outputs.exitcode == '2'
+        uses: actions/upload-artifact@v4
+        with:
+          name: terraform-plan-prod
+          path: environments/prod/terraform-plan-prod
+          retention-days: 5
+
+      - name: Check Plan Exit Code and Determine Job Outcome
+        id: check-plan  # Adding an ID so you can reference this step later
+        run: |
+            exitCode=${{ steps.plan.outputs.exitcode }}
+            echo "Plan exit code: $exitCode"
+            if [ $exitCode -eq 1 ]; then
+              echo "Terraform Plan failed with error!"
+              exit 1 # Fail the job if plan had an error (exit code 1)
+            elif [ $exitCode -eq 2 ]; then
+              echo "Terraform Plan detected changes."
+              echo "has_changes=true" >> $GITHUB_OUTPUT  # Set output variable for downstream jobs
+              exit 0
+            else
+              echo "Terraform Plan detected no changes or had unexpected exit code."
+              echo "has_changes=false" >> $GITHUB_OUTPUT  # Set output variable for downstream jobs
+              exit 0
+            fi
+
+  terraform-apply:
+    name: Terraform Apply
+    needs: terraform-plan
+    if: needs.terraform-plan.outputs.has_changes == 'true' # Only run if there are changes
+    runs-on: ubuntu-latest
+    container:
+      image: rigualj/devops-image-slim:latest
+    defaults:
+      run:
+        working-directory: environments/prod
+    env:
+      TF_VAR_grafana_url: "https://rigualj.grafana.net"
+      TF_VAR_grafana_auth_token: ${{ secrets.GRAFANA_AUTH_TOKEN }}
+    environment: production # Requires approval.  Also requires the environment to be set up in GitHub.
+
+    
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+      
+      - name: Configure AWS Credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4 # Use latest version
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }} # Role ARN with OIDC trust policy and IAM permissions to assume
+          role-session-name: GitHubActionsTerraformApply
+          aws-region: us-east-1
+
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Download Terraform Plan
+        uses: actions/download-artifact@v4
+        with:
+          name: terraform-plan-prod
+          path: environments/prod
+
+      - name: Apply Changes
+        run: terraform apply -auto-approve terraform-plan-prod
+        working-directory: environments/prod

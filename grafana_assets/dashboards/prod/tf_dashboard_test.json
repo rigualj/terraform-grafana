@@ -1,0 +1,19 @@
+{
+    "title": "TF Dashboard Test (Managed)",
+    "tags": [ "terraform-managed", "test" ],
+    "timezone": "browser",
+    "schemaVersion": 16,
+    "version": 1,
+    "refresh": "5s",
+    "panels": [
+      {
+        "type": "text",
+        "title": "Info",
+        "gridPos": { "h": 2, "w": 24, "x": 0, "y": 0 },
+        "options": {
+          "mode": "markdown",
+          "content": "# Terraform Test\n\nThis dashboard is managed by Terraform.\n\n*Last updated: ${__to:date}*"
+        }
+      }
+    ]
+  }
